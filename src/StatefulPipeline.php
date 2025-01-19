@@ -1,10 +1,16 @@
 <?php
 
+namespace Crumbls\Pipeline;
+
+use Crumbls\Pipeline\Contracts\StateStoreInterface;
+use Crumbls\Pipeline\Stores\CacheStateStore;
+use Illuminate\Pipeline\Pipeline;
+
 /**
  * StatefulPipeline extends Laravel's base Pipeline to add state management
  * and job-based execution capabilities.
  */
-class StatefulPipeline extends BasePipeline
+class StatefulPipeline extends Pipeline
 {
     /**
      * Current state of the pipeline execution
@@ -27,6 +33,36 @@ class StatefulPipeline extends BasePipeline
         'timeout' => 3600,
         'allowParallel' => false,
     ];
+
+    /**
+     * @var StateStoreInterface|null
+     */
+    protected ?StateStoreInterface $stateStore = null;
+
+    /**
+     * Get the state store instance
+     */
+    public function getStateStore(): StateStoreInterface
+    {
+        if ($this->stateStore === null) {
+            $this->stateStore = app()->make(CacheStateStore::class);
+        }
+
+        return $this->stateStore;
+    }
+
+
+    /**
+     * Set the state store instance
+     */
+    public function setStateStore(StateStoreInterface $stateStore): self
+    {
+        $this->stateStore = $stateStore;
+        return $this;
+    }
+
+
+
 
     /**
      * Set the pipes through which the passable should be sent.
@@ -88,24 +124,6 @@ class StatefulPipeline extends BasePipeline
         return $this;
     }
 
-    /**
-     * Execute the pipeline with state management
-     *
-     * @param mixed $passable
-     * @return mixed
-     */
-    public function thenReturn($passable)
-    {
-        $pipeline = array_reduce(
-            array_reverse($this->pipes),
-            $this->carry(),
-            function ($passable) {
-                return $passable;
-            }
-        );
-
-        return $pipeline($passable);
-    }
 
     /**
      * Get a Closure that represents a slice of the application onion.
@@ -151,5 +169,89 @@ class StatefulPipeline extends BasePipeline
                 }
             };
         };
+    }
+
+    /**
+     * Resume a pipeline from its last successful state
+     *
+     * @param string $pipelineId
+     * @return mixed
+     */
+    public function resume(string $pipelineId)
+    {
+        // Load the previous state
+        $state = $this->getStateStore()->load($pipelineId);
+
+        if (!$state) {
+            throw new \RuntimeException("No saved state found for pipeline: {$pipelineId}");
+        }
+
+        // Restore pipeline state
+        $this->setState($state);
+
+        // Get the last successful step
+        $lastCompletedStep = end($state['completedSteps']);
+        $nextStepIndex = $lastCompletedStep !== false ? $lastCompletedStep + 1 : 0;
+
+        // Get remaining pipes
+        $remainingPipes = array_slice($this->pipes, $nextStepIndex);
+
+        // Execute remaining pipeline steps
+        return $this
+            ->through($remainingPipes)
+            ->thenReturn();
+    }
+
+    /**
+     * Execute the pipeline with state management
+     */
+    public function thenReturn()
+    {
+        // Generate pipeline ID if not exists
+        if (!isset($this->state['pipelineId'])) {
+            $this->state['pipelineId'] = uniqid('pipeline_', true);
+        }
+
+        try {
+            $result = parent::thenReturn();
+
+            // Mark pipeline as completed
+            $this->state['status'] = 'completed';
+            $this->getStateStore()->save($this->state['pipelineId'], $this->state);
+
+            return $result;
+        } catch (\Throwable $e) {
+            // Update state with error information
+            $this->state['status'] = 'failed';
+            $this->state['error'] = [
+                'message' => $e->getMessage(),
+                'step' => $this->state['currentStep'],
+                'occurred_at' => now()
+            ];
+
+            // Save failed state
+            $this->getStateStore()->save($this->state['pipelineId'], $this->state);
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Create a checkpoint in the current pipeline
+     *
+     * @param mixed $data Optional checkpoint data
+     * @return $this
+     */
+    public function checkpoint($data = null)
+    {
+        $this->state['checkpoints'][] = [
+            'step' => $this->state['currentStep'],
+            'data' => $data,
+            'timestamp' => now()
+        ];
+
+        $this->getStateStore()->save($this->state['pipelineId'], $this->state);
+
+        return $this;
     }
 }

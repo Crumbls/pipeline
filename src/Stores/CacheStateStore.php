@@ -1,11 +1,14 @@
 <?php
 
-namespace Crumbls\Pipeline\State;
+namespace Crumbls\Pipeline\Stores;
+
+use Crumbls\Pipeline\Contracts\StateStoreInterface;
+use Illuminate\Contracts\Cache\Repository as Cache;
 
 class CacheStateStore implements StateStoreInterface
 {
     public function __construct(
-        private \Illuminate\Contracts\Cache\Repository $cache,
+        private Cache $cache,
         private string $prefix = 'pipeline_state_'
     ) {}
 
@@ -14,7 +17,7 @@ class CacheStateStore implements StateStoreInterface
         $this->cache->put(
             $this->prefix . $pipelineId,
             $state,
-            now()->addHours(24)
+            now()->addDay()
         );
     }
 
@@ -27,4 +30,5 @@ class CacheStateStore implements StateStoreInterface
     {
         $this->cache->forget($this->prefix . $pipelineId);
     }
+    
 }

@@ -2,6 +2,8 @@
 
 namespace Crumbls\Pipeline;
 
+use Crumbls\Pipeline\State\StateStoreInterface;
+use Crumbls\Pipeline\Stores\CacheStateStore;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Contracts\Container\Container;
 
@@ -12,6 +14,8 @@ class PipelineServiceProvider extends ServiceProvider
         $this->app->bind('stateful-pipeline', function (Container $app) {
             return new StatefulPipeline($app);
         });
+        $this->app->bind(StateStoreInterface::class, CacheStateStore::class);
+
     }
 
     public function boot()

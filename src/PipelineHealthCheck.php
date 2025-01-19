@@ -1,5 +1,6 @@
 <?php
 
+namespace Crumbls\Pipeline;
 class PipelineHealthCheck
 {
     public function check(string $pipelineId): array

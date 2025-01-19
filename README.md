@@ -1,10 +1,14 @@
 # Crumbls/Pipeline
 
-A powerful, state-aware pipeline implementation for Laravel with job-based execution support. This package extends Laravel's pipeline system to add state management, job queuing, progress tracking, and advanced error recovery capabilities.
+A powerful, state-aware pipeline implementation with resumable execution and multiple storage backends for Laravel with job-based execution support. This package extends Laravel's pipeline system to add state management, job queuing, progress tracking, and advanced error recovery capabilities.
 
 ## Features
 
 - 🔄 State tracking for each pipeline step
+- 💾 Multiple storage backends (Cache, Database, custom implementations)
+- 🔁 Resumable pipeline execution
+- 📊 Pipeline history and audit trails
+- 🧹 Automatic state cleanup for completed pipelines
 - 📊 Progress monitoring and metadata storage
 - 🔌 Middleware support for cross-cutting concerns
 - 💾 State persistence with multiple storage options
@@ -24,6 +28,44 @@ composer require crumbls/pipeline
 ```
 
 The package will automatically register its service provider.
+
+## Storage Configuration
+
+Configure your preferred storage backend:
+
+```php
+// Using Cache Store (default)
+use Crumbls\Pipeline\Stores\CacheStore;
+
+$pipeline->setStore(new CacheStore());
+
+// Using Database Store
+use Crumbls\Pipeline\Stores\DatabaseStore;
+
+$pipeline->setStore(new DatabaseStore());
+
+// Custom Store Implementation
+class RedisStore extends AbstractStore
+{
+    // Your implementation
+}
+```
+
+## Pipeline Management
+
+```php
+// List all pipelines
+$pipelines = $pipeline->getStore()->list();
+
+// Get pipeline history
+$history = $pipeline->getStore()->getHistory($pipelineId);
+
+// Clean up old pipeline states
+$cleaned = $pipeline->getStore()->cleanup(48); // Older than 48 hours
+
+// Resume a failed pipeline
+$pipeline->resume($pipelineId);
+```
 
 ## Basic Usage
 
@@ -202,7 +244,7 @@ If you discover any security related issues, please email security@crumbls.com i
 
 ## Credits
 
-- [Your Name](https://github.com/yourusername)
+- [Chase Miller](https://github.com/chasecmiller)
 - [All Contributors](../../contributors)
 
 ## License
